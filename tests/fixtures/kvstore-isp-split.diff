@@ -1,0 +1,34 @@
+Removed items from the public API
+=================================
+-impl kvstore::Store for kvstore::Db
+-impl kvstore::Store for kvstore::Db
+-pub fn kvstore::Store::delete(&self, &str)
+-pub fn kvstore::Store::flush(&self)
+-pub fn kvstore::Store::get(&self, &str) -> core::option::Option<alloc::string::String>
+-pub fn kvstore::Store::put(&self, &str, &str)
+-pub fn kvstore::legacy_stats() -> u8
+
+Changed items in the public API
+===============================
+-pub trait kvstore::Store
++pub trait kvstore::Store: kvstore::Reader + kvstore::Writer + kvstore::Maintenance
+-pub fn kvstore::capacity(u8) -> u8
++pub fn kvstore::capacity(u64) -> u64
+
+Added items to the public API
+=============================
++impl kvstore::Maintenance for kvstore::Db
++impl kvstore::Maintenance for kvstore::Db
++impl kvstore::Reader for kvstore::Db
++impl kvstore::Reader for kvstore::Db
++impl kvstore::Writer for kvstore::Db
++impl kvstore::Writer for kvstore::Db
++impl<T> kvstore::Store for kvstore::Db where T: kvstore::Reader + kvstore::Writer + kvstore::Maintenance
++pub trait kvstore::Maintenance
++pub fn kvstore::Maintenance::flush(&self)
++pub trait kvstore::Reader
++pub fn kvstore::Reader::get(&self, &str) -> core::option::Option<alloc::string::String>
++impl<T: kvstore::Reader + kvstore::Writer + kvstore::Maintenance> kvstore::Store for T
++pub trait kvstore::Writer
++pub fn kvstore::Writer::delete(&self, &str)
++pub fn kvstore::Writer::put(&self, &str, &str)

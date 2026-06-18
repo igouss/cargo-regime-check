@@ -1,0 +1,69 @@
+# Worked `regime-transition.toml` for an Interface-Segregation split: the fat
+# `Store` trait segregated into `Reader` / `Writer` / `Maintenance`, with `Store`
+# kept as a super-trait + blanket impl.
+#
+# This is a TRANSITION, not a refactor: it adds three public traits and a blanket
+# impl, changes `Store`'s supertrait bounds, widens `capacity`, and drops a helper.
+# Declared honestly, the gate PASSes. Re-claimed as `kind = "refactor"`, the gate
+# FAILs (Case C) — proving the "just a refactor" claim false.
+#
+# Generated against a real `cargo +nightly public-api diff` of the `kvstore`
+# throwaway crate (see tests/fixtures/kvstore-isp-split.diff).
+[meta]
+kind = "transition"
+
+# --- the iso part of `u`: each method moved from Store to its capability trait ---
+[[rename]]
+from = "kvstore::Store::get"
+to = "kvstore::Reader::get"
+[[rename]]
+from = "kvstore::Store::put"
+to = "kvstore::Writer::put"
+[[rename]]
+from = "kvstore::Store::delete"
+to = "kvstore::Writer::delete"
+[[rename]]
+from = "kvstore::Store::flush"
+to = "kvstore::Maintenance::flush"
+
+# --- declared discovery: the three new traits, their impls, and the blanket impl ---
+[[additive]]
+item = "kvstore::Reader"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Writer"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Maintenance"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Reader for kvstore::Db"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Writer for kvstore::Db"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Maintenance for kvstore::Db"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Store for kvstore::Db"
+adr = "ADR-ISP-001"
+[[additive]]
+item = "kvstore::Store for T"
+adr = "ADR-ISP-001"
+
+# --- the dropped helper and the old direct impl (now provided via the blanket) ---
+[[removal]]
+item = "kvstore::legacy_stats"
+reason = "unused since v1; folded into capacity(). Breaking — bump the major version."
+[[removal]]
+item = "kvstore::Store for kvstore::Db"
+reason = "Db now gets Store via the blanket impl over the 3 capability traits; the explicit impl is redundant."
+
+# --- the supertrait change and the widened signature ---
+[[change]]
+item = "kvstore::Store"
+adr = "ADR-ISP-001"
+[[change]]
+item = "kvstore::capacity"
+adr = "ADR-0002"

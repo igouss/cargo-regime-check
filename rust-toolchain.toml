@@ -1,0 +1,9 @@
+# This tool builds on STABLE and is deliberately standalone — it is NOT a member
+# of any consumer's workspace (so it never inherits a pinned/older toolchain) and
+# never needs nightly itself. `cargo public-api` needs nightly to emit rustdoc
+# JSON, but it is invoked as a SEPARATE process (`cargo +nightly public-api ...`)
+# and piped into this tool.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

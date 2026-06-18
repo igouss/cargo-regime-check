@@ -1,0 +1,20 @@
+# Agent-loop starting point for the kvstore ISP split: a transition that declares
+# only the four method renames. The new traits/impls (additive), the dropped
+# helper + old impl (removal), and the supertrait/signature changes are still
+# undeclared residual, so the gate FAILs and emits remediation for each.
+# Appending that remediation verbatim must make the gate PASS.
+[meta]
+kind = "transition"
+
+[[rename]]
+from = "kvstore::Store::get"
+to = "kvstore::Reader::get"
+[[rename]]
+from = "kvstore::Store::put"
+to = "kvstore::Writer::put"
+[[rename]]
+from = "kvstore::Store::delete"
+to = "kvstore::Writer::delete"
+[[rename]]
+from = "kvstore::Store::flush"
+to = "kvstore::Maintenance::flush"

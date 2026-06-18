@@ -1,0 +1,14 @@
+Removed items from the public API
+=================================
+-pub fn demo::doomed()
+-pub fn demo::old_name(u8) -> u8
+
+Changed items in the public API
+===============================
+-pub fn demo::widening(u8) -> u8
++pub fn demo::widening(u64) -> u64
+
+Added items to the public API
+=============================
++pub fn demo::brand_new() -> i32
++pub fn demo::new_name(u8) -> u8

@@ -1,0 +1,29 @@
+[package]
+name = "cargo-regime-check"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Gate a Rust crate's public-API diff against a declared transition (the functor `u`): refactor (residual must be 0) vs transition (residual must be declared). Operationalizes residual-after-functorial-transport from arXiv:2606.01444."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/igouss/cargo-regime-check"
+keywords = ["cargo", "public-api", "semver", "ci", "refactor"]
+categories = ["development-tools::cargo-plugins", "development-tools::testing"]
+
+# Standalone tool. It builds on STABLE. `cargo public-api` (which needs nightly to
+# emit rustdoc JSON) is invoked as a SEPARATE process and piped in — this crate
+# never needs nightly itself, and is deliberately NOT a member of any workspace.
+[[bin]]
+name = "cargo-regime-check"
+path = "src/bin/cargo-regime-check.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

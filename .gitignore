@@ -1,0 +1,9 @@
+# bv (beads viewer) local config and caches
+.bv/
+
+# beads local issue tracker (local workflow tooling, not part of the published tool)
+.beads/
+
+# Rust build output
+/target
+

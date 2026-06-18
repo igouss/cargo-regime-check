@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The tool's own quality gate — builds and runs on STABLE.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo test --all-targets
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo fmt --check
+
+  # Demonstrates the agent-facing invocation: cargo public-api (NIGHTLY) piped
+  # into the gate. Here it self-checks the demo fixture; in a real repo, replace
+  # the `--diff` file with a live `cargo +nightly public-api -p <crate> diff
+  # origin/main..HEAD`.
+  regime-gate-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install --path .
+      - name: gate the demo transition (must PASS, exit 0)
+        run: cargo-regime-check --regime examples/transition.toml --diff tests/fixtures/demo.diff --format json
+
+  # Reference: gating a downstream crate's live public-API diff. NIGHTLY is needed
+  # only for `cargo public-api`. Adapt and enable in the consuming repo.
+  #
+  # regime-gate:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with: { fetch-depth: 0 }            # need history for the base ref
+  #     - uses: dtolnay/rust-toolchain@nightly
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - run: cargo install cargo-public-api --locked
+  #     - run: cargo install cargo-regime-check --locked
+  #     - run: |
+  #         cargo +nightly public-api -p my-port-crate diff origin/main..HEAD \
+  #           | cargo-regime-check --regime regime-transition.toml --format json

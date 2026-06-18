@@ -1,0 +1,9 @@
+# Same diff, but claimed as a pure refactor declaring only the rename. The gate
+# FAILs: brand_new (added), doomed (removed), and widening (changed) are residual
+# the rename does not transport — i.e. this was never a refactor. The Case-C catch.
+[meta]
+kind = "refactor"
+
+[[rename]]
+from = "demo::old_name"
+to = "demo::new_name"

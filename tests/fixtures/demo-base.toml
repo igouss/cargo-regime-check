@@ -1,0 +1,10 @@
+# Agent-loop starting point for the demo diff: a transition that declares ONLY
+# the rename. The added/removed/changed lines are undeclared residual, so the
+# gate FAILs and emits remediation for each. Appending that remediation verbatim
+# must make the gate PASS — that is the agent-loop acceptance test.
+[meta]
+kind = "transition"
+
+[[rename]]
+from = "demo::old_name"
+to = "demo::new_name"

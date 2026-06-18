@@ -1,0 +1,20 @@
+# Declared transition `u` for the demo diff: every line is accounted for, so the
+# gate PASSes. The "I changed the schema and here's the justified residual" case.
+[meta]
+kind = "transition"
+
+[[rename]]
+from = "demo::old_name"
+to = "demo::new_name"
+
+[[additive]]
+item = "demo::brand_new"
+adr = "ADR-0001"
+
+[[removal]]
+item = "demo::doomed"
+reason = "unused since v1; semver major bump"
+
+[[change]]
+item = "demo::widening"
+adr = "ADR-0002"
