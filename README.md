@@ -17,6 +17,36 @@ It is built for **AI agents in CI**: deterministic JSON, exit codes you branch o
 and — on failure — a copy-pasteable `regime-transition.toml` snippet per line that,
 applied verbatim, makes the gate pass. See [`AGENTS.md`](./AGENTS.md).
 
+## What it does (in 30 seconds)
+
+1. You write down the API changes you *meant* to make — renames, additions,
+   removals, signature changes — in a small `regime-transition.toml`.
+2. The tool diffs your crate's public API and checks every changed line against
+   what you declared.
+3. Anything you **didn't** declare is **residual**. The gate fails until you either
+   declare it (it was intentional) or undo it (it was an accident).
+
+Think of it as a **contract for API change**: you state the change you intend, and
+the tool refuses to merge anything you didn't state. The payoff is that *"this PR is
+just a refactor, no real API change"* stops being something a reviewer takes on
+faith — if it's truly a refactor the gate is green; if something slipped in, the gate
+names the exact line and tells you what to do about it.
+
+## When to use it
+
+| Reach for it when… | Skip it when… |
+|---|---|
+| You're refactoring a public API and want to **prove** the surface didn't change | The change is purely internal — no `pub` surface delta, nothing to gate |
+| A real change is buried in **rename churn** (trait/module splits, moves) and you want only the meaningful lines surfaced | You only need *"is this breaking?"* — `cargo-semver-checks` answers that directly |
+| You want every intentional API change **recorded with an ADR/reason**, enforced complete | You can't or won't declare intent up front (the gate certifies *declared* intent, it can't infer it) |
+| An **AI agent** is making the change and you want a hands-off CI gate it can act on | It's a throwaway crate where API stability doesn't matter |
+
+In short: use it as a **PR or pre-push gate** on crates whose public API is
+load-bearing — published libraries, port/adapter crates other code depends on,
+anything where *"we didn't mean to change that"* is expensive.
+
+## What a run looks like
+
 ```console
 $ cargo +nightly public-api -p kvstore diff origin/main..HEAD \
     | cargo-regime-check --regime regime-transition.toml   # kind="refactor", only renames declared
