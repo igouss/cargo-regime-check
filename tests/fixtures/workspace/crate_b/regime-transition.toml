@@ -1,0 +1,11 @@
+# crate_b: a transition that declares ONLY the rename crate_b.diff performs
+# (`crate_b::renamed_from` -> `crate_b::renamed_to`). The added
+# `crate_b::undeclared_feature` is left undeclared, so it stays residual and the
+# gate FAILs — the crate gates as `residual` (its embedded single-crate verdict
+# is `fail`). This is the "leaves an undeclared residual" case.
+[meta]
+kind = "transition"
+
+[[rename]]
+from = "crate_b::renamed_from"
+to = "crate_b::renamed_to"

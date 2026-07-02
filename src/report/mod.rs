@@ -9,6 +9,7 @@
 
 pub mod human;
 pub mod json;
+pub mod workspace;
 
 use serde::Serialize;
 

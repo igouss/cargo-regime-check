@@ -1,0 +1,9 @@
+# Fixture workspace for the `--workspace` integration tests.
+#
+# This is a VIRTUAL manifest (a `[workspace]` table with no `[package]`), so it is
+# a workspace ROOT: `cargo metadata` run here stops the upward search here and
+# never walks up into the parent `cargo-regime-check` package. That self-
+# containment is deliberate — the parent must never adopt these throwaway crates.
+[workspace]
+resolver = "2"
+members = ["crate_a", "crate_b", "crate_c"]

@@ -217,6 +217,9 @@ cargo regime-check --regime <FILE> [--diff <FILE|->] [OPTIONS]
 | `--capabilities` | Print the machine-readable contract (schema, exit codes, classes) as JSON, then exit 0. |
 | `-h, --help` | Print help, then exit 0. |
 
+For the whole-workspace flags (`--workspace`, `--base`, `--diff-dir`, `--changed-only`),
+see [Workspace mode](#workspace-mode).
+
 Examples:
 
 ```sh
@@ -267,6 +270,156 @@ did you mean '--regime'?`), so an agent that fat-fingers once learns the spellin
 
 On an exit-`2` failure the object is `{ "error", "hint", "template" }` instead, where
 `template` is a minimal valid regime file you can write straight to disk.
+
+---
+
+## Workspace mode
+
+Gate **every** workspace member that carries a `regime-transition.toml` in one run —
+members are discovered via `cargo metadata`, gated independently against their own regime
+files, and folded into a single aggregate verdict. This is the built-in replacement for a
+hand-maintained per-crate loop.
+
+```sh
+# Default (process mode): run cargo public-api per gated crate, diffing base..HEAD.
+cargo-regime-check --workspace --base origin/main
+
+# Or gate pre-captured diffs — no nightly, no git checkout.
+cargo-regime-check --workspace --diff-dir target/regime-diffs
+
+# Skip (but still list) crates that no file touched since the base.
+cargo-regime-check --workspace --base origin/main --changed-only
+```
+
+A member is gated **iff** it has a `regime-transition.toml` at its crate root. If
+`--workspace` discovers **zero** gated crates it exits `2` — refusing to report green
+having gated nothing. A workspace flag used **without** `--workspace` is a usage error
+(exit 2), never a silent no-op; conversely `--regime`/`--diff` are single-crate flags and
+are a usage error *with* `--workspace` (each gated crate supplies its own regime, and
+diffs come from the process or `--diff-dir`).
+
+### The two diff-acquisition modes
+
+| Mode | How each crate's diff is obtained | `--base` | Dirty tree |
+|---|---|---|---|
+| **process** (default) | shells out to `cargo +nightly public-api -p <crate> diff <base>..HEAD` per crate | **required** | **refused** (see below) |
+| **`--diff-dir <dir>`** | reads a pre-captured `<crate>.diff` from `<dir>` | ignored (unless `--changed-only`) | not checked |
+
+**Process mode refuses a dirty working tree.** `cargo public-api` builds rustdoc JSON by
+**git-checking-out each commit in-tree**, which would clobber uncommitted changes. The
+tool fails closed (exit 2) and names the escape hatches: commit/stash your changes, build
+in a throwaway **`git worktree add /tmp/regime-wt HEAD`** and run there, or capture the
+diffs and gate them with `--diff-dir` (no checkout, so the dirtiness check is skipped).
+
+**`--diff-dir` mode never checks out anything.** A gated crate with **no** `<crate>.diff`
+in the directory is an **error** (exit 2), never a silent skip: a missing diff can't be
+distinguished from "nothing changed", so the tool won't guess.
+
+### Aggregate verdict and per-crate status
+
+The run's exit code is the **max** over crates — `error (2) > residual (1) > clean (0)` —
+so one crate's tool-error is *recorded* (it does not abort its siblings) yet still drives
+the whole run to `2`. Each crate lands in exactly one status:
+
+| status | meaning | exit contribution |
+|---|---|---|
+| `clean` | every line transported or declared | 0 |
+| `residual` | undeclared/contradictory residual | 1 |
+| `errored` | unreadable/malformed regime, missing diff, or `cargo public-api` failure | 2 |
+| `skipped` | excluded by `--changed-only` (listed, never absent) | not evaluated |
+
+`counts.crates = clean + residual + errored` (the *evaluated* crates); `skipped` crates
+are listed but not counted as evaluated. When every gated crate is skipped by
+`--changed-only` (nothing relevant changed) the run exits `0`.
+
+### `--changed-only` is a performance concession, honestly
+
+`--changed-only` runs `git diff --name-only <base>..HEAD` and skips any gated crate that no
+changed file touched **under its own crate root**. That is an *approximation*, not a free
+lunch: it assumes a crate's public API is a function of the files in its own tree. A crate
+that re-exports a changed workspace dependency —
+
+```rust
+pub use some_changed_dep::Thing;   // this crate's own tree is unchanged
+```
+
+— can have its public API change with **zero** edits to its own tree, and `--changed-only`
+will skip it and miss that. So gating **everything** is the safe default; `--changed-only`
+is opt-in for large workspaces where that re-export risk is understood and acceptable.
+
+### CI: nightly diff-generation feeding stable gating
+
+Split the run so nightly is used only to *produce* diffs and the *gate* runs on stable
+from the captured artifacts — no nightly, no checkout, no dirty-tree hazard at gate time:
+
+```yaml
+# Stage 1 (nightly): capture one diff per gated crate into an artifact dir.
+- uses: dtolnay/rust-toolchain@nightly
+- run: cargo install cargo-public-api --locked
+- run: |
+    mkdir -p target/regime-diffs
+    for crate in crate_a crate_b; do
+      cargo +nightly public-api -p "$crate" diff origin/main..HEAD \
+        > "target/regime-diffs/$crate.diff"
+    done
+
+# Stage 2 (stable): gate every gated crate from the captured diffs.
+- uses: dtolnay/rust-toolchain@stable
+- run: cargo install --git https://github.com/igouss/cargo-regime-check --locked
+- run: cargo-regime-check --workspace --diff-dir target/regime-diffs --format json
+```
+
+### What it prints
+
+Human output is an aggregate header, a per-crate line, and the full single-crate report
+for every non-clean crate:
+
+```console
+$ cargo-regime-check --workspace --diff-dir target/regime-diffs
+regime-check --workspace: FAIL — 2 crate(s) evaluated
+  1 clean, 1 residual, 0 errored, 0 skipped
+
+crates:
+  ✓ crate_a   clean   (2 item(s), 2 accounted, 0 residual)
+  ✗ crate_b   residual   (3 item(s), 2 accounted, 1 residual)
+
+residual detail:
+  … the full single-crate report for crate_b, with the fix snippet per residual line …
+
+verdict: FAIL (exit 1)
+```
+
+`--format json` sorts crates by name and embeds each gated crate's **single-crate report
+object unchanged** under a `report` field — byte-for-byte equal to a standalone
+single-crate JSON run of that crate — so an agent parses one nested schema, not two:
+
+```jsonc
+{
+  "verdict": "fail",                       // pass | fail | error  → exit 0 | 1 | 2
+  "counts": { "crates": 2, "clean": 1, "residual": 1, "errored": 0, "skipped": 0 },
+  "crates": [
+    { "name": "crate_a", "status": "clean",    "report": { /* single-crate report */ } },
+    { "name": "crate_b", "status": "residual", "report": { /* single-crate report */ } }
+    // "errored" entries carry { "error", "hint" }; "skipped" entries carry { "reason" }.
+  ]
+}
+```
+
+The machine-readable contract for all of this lives in `--capabilities` under a
+`workspace` block:
+
+```jsonc
+"workspace": {
+  "flag": "--workspace",
+  "verdicts": ["pass", "fail", "error"],
+  "verdict_exit_codes": { "pass": 0, "fail": 1, "error": 2 },
+  "crate_statuses": ["clean", "residual", "errored", "skipped"],
+  "counts": ["crates", "clean", "residual", "errored", "skipped"],
+  "counts_note": "crates = clean + residual + errored; skipped crates are NOT counted",
+  "exit_priority": "aggregate is the max over crates: error(2) > residual(1) > clean(0)",
+  "flags": { "--base": "…", "--diff-dir": "…", "--changed-only": "…" }
+}
+```
 
 ---
 
@@ -357,8 +510,9 @@ data migration / CQL) defines the buckets and then leaves the codebase.
 | Layer | Responsibility |
 |-------|----------------|
 | `domain/` | `identity.rs` (token → `ApiIdentity{kind,path,signature}`), `diff.rs`, `transition.rs`, `classify.rs`, `gate.rs` — the single source of truth for "is this a violation, and what's required". |
-| `adapters/` | `public_api_diff.rs` (text → `ApiDiff`), `regime_file.rs` (owns the TOML format + remediation rendering). |
-| `report/` | Stable view-model + `human`/`json` renderers. |
+| `adapters/` | `public_api_diff.rs` (text → `ApiDiff`), `regime_file.rs` (owns the TOML format + remediation rendering). Workspace-mode driven adapters: `cargo_metadata.rs` (gated-crate enumeration), `git.rs` (dirty check + changed-file mapping), `public_api_process.rs` / `diff_dir.rs` (the two diff sources). |
+| `report/` | Stable view-model + `human`/`json` renderers; `report/workspace.rs` is the aggregate view-model + its renderers. |
+| `pipeline` / `workspace` | `pipeline.rs` composes the per-crate `parse → classify → gate → build` once (shared by single-crate and workspace); `workspace/mod.rs` is the workspace orchestration use-case (the impure glue that drives the adapters + pipeline and folds the results). |
 | `bin/` | Arg parsing, exit codes, `--capabilities`. |
 
 Extending it (new class, new action) is documented in [`AGENTS.md` §6](./AGENTS.md).
@@ -415,7 +569,12 @@ each is a ranked roadmap item in [`AGENTS.md` §5](./AGENTS.md):
    `u` yields a confident-but-wrong green.
 3. **One undifferentiated "change" bucket.** A widened signature (≈ safe) and a narrowed
    one (≈ breaking) are both `residual_change`; sub/supertype direction isn't classified.
-4. **Single crate only.** No whole-workspace mode yet.
+4. **`--changed-only` is a heuristic, not a proof.** Whole-workspace mode ships (gate
+   every member with a `regime-transition.toml` in one run — see [Workspace
+   mode](#workspace-mode)), but its `--changed-only` optimization assumes a crate's public
+   API is a function of files in its own tree. A crate re-exporting a changed workspace
+   dependency (`pub use dep::X`) can change surface with no edits to its own tree, so
+   `--changed-only` can miss it — hence gate-everything is the safe default.
 5. **It gates declared intent, not truth.** It proves the diff matches what you *said*;
    it does not validate that your ADR exists or that your reason is good. That's a
    reviewer's job — and now a small, well-defined one.
@@ -443,7 +602,10 @@ Because declaring *any* added/removed/changed surface means it's a transition by
 definition — that's the "Case C" catch. Set `meta.kind = "transition"`.
 
 **Can it gate a whole workspace at once?**
-Not yet — single crate per run. Whole-workspace mode is roadmap item #4.
+Yes. `cargo-regime-check --workspace --base origin/main` gates every member carrying a
+`regime-transition.toml` in one run and aggregates the verdicts (exit = max over crates).
+Use `--diff-dir <dir>` to gate pre-captured diffs on stable with no checkout, and
+`--changed-only` to skip crates nothing touched. See [Workspace mode](#workspace-mode).
 
 **Is it on crates.io?**
 Not yet. Install with `cargo install --git https://github.com/igouss/cargo-regime-check`.
@@ -464,10 +626,10 @@ arithmetic over `cargo public-api`'s output.
 just check        # cargo test + clippy -D warnings + fmt --check
 ```
 
-60 tests (unit + agent-loop + exit-code/ergonomics). No `unsafe` (`forbid`-en). Domain
-stays framework-free. Tests follow zero/one/many with cyclomatic complexity 1. The
-agent-loop test (`tests/agent_loop.rs`) is load-bearing: apply the tool's own emitted
-remediation verbatim → re-run → exit 0.
+129 tests (unit + agent-loop + exit-code/ergonomics + workspace). No `unsafe`
+(`forbid`-en). Domain stays framework-free. Tests follow zero/one/many with cyclomatic
+complexity 1. The agent-loop test (`tests/agent_loop.rs`) is load-bearing: apply the
+tool's own emitted remediation verbatim → re-run → exit 0.
 
 ---
 

@@ -100,6 +100,37 @@ On a code-`2` failure the JSON object is `{ "error", "hint", "template" }`
 instead — `template` is a minimal valid `regime-transition.toml` you can write to
 disk. `--format json` emits **no colour** and is deterministic.
 
+### Workspace mode (aggregate)
+
+`--workspace` gates **every** member carrying a `regime-transition.toml` in one run and
+aggregates the outcomes. The aggregate exit code is the **max** over crates:
+`error (2) > residual (1) > clean (0)`. One crate's tool-error is *recorded* (an
+`errored` entry) and does **not** abort its siblings, yet still drives the run to `2`.
+The refuse-a-false-green rules: **zero** gated crates discovered ⇒ exit `2`; a gated crate
+with no `<crate>.diff` under `--diff-dir` ⇒ that crate is `errored` and the run exits `2`
+(never a silent skip); every gated crate skipped by `--changed-only` (nothing relevant
+changed) ⇒ exit `0`.
+
+The aggregate JSON embeds each gated crate's single-crate report **unchanged** under
+`report` (byte-equal to a standalone single-crate JSON run), so you parse one nested
+schema:
+
+```jsonc
+{
+  "verdict": "pass" | "fail" | "error",       // → exit 0 | 1 | 2
+  "counts": { "crates": N, "clean": N, "residual": N, "errored": N, "skipped": N },
+  "crates": [                                  // sorted by name
+    { "name": "…", "status": "clean" | "residual", "report": { /* single-crate report */ } },
+    { "name": "…", "status": "errored", "error": "…", "hint": "…" },
+    { "name": "…", "status": "skipped", "reason": "…" }
+  ]
+}
+```
+
+`counts.crates = clean + residual + errored` (the evaluated crates; `skipped` are listed
+but not counted). The machine-readable contract is in `cargo regime-check --capabilities`
+under a `workspace` block. See §3 for invocation.
+
 ---
 
 ## 3. How to run it
@@ -130,6 +161,31 @@ Notes:
 - Bootstrap a regime file: `cargo-regime-check --template > regime-transition.toml`.
 - Read the model any time: `cargo-regime-check --explain`.
 
+### Whole-workspace (gate every gated crate at once)
+
+Gate every member carrying a `regime-transition.toml` in one invocation instead of
+looping per crate:
+
+```sh
+# Default (process) mode: cargo public-api per gated crate, base..HEAD. Needs --base and
+# a CLEAN tree — public-api git-checks-out each commit in-tree to build rustdoc JSON, so
+# a dirty tree is refused (exit 2). Escape hatches: commit/stash, a throwaway
+# `git worktree`, or --diff-dir.
+cargo regime-check --workspace --base origin/main --format json
+
+# --diff-dir mode: gate pre-captured diffs on stable — no nightly, no checkout, no
+# dirty-tree check. A gated crate with no <crate>.diff is an error, never a skip.
+cargo regime-check --workspace --diff-dir target/regime-diffs --format json
+```
+
+The CI-native split: a **nightly** stage writes one `cargo public-api … diff base..HEAD`
+per crate into a directory; a **stable** stage gates them with `--workspace --diff-dir
+<dir>`. `--base` is required in process mode and with `--changed-only`; it is ignored in
+pure `--diff-dir` mode. A workspace flag without `--workspace` (or `--regime`/`--diff`
+*with* `--workspace`) is a usage error (exit 2), never a silent no-op. `--changed-only`
+skips (but still lists) crates no file under their own tree touched since `--base` — a
+performance concession that can miss a crate re-exporting a changed dependency (§4).
+
 ---
 
 ## 4. Known approximations (where the code diverges from the theory)
@@ -150,7 +206,11 @@ the faithful construction. Each is a roadmap item (§5).
 3. **One undifferentiated "change" bucket.** A widened signature (≈ additive, safe)
    and a narrowed one (≈ lossy, breaking) are both `residual_change`. Sub/supertype
    direction is not classified.
-4. **Single crate.** No whole-workspace mode.
+4. **`--changed-only` is a heuristic.** Whole-workspace mode ships (§2, §3); its
+   `--changed-only` optimization assumes a crate's public API is a function of files in
+   its own tree, so a crate re-exporting a changed dependency (`pub use dep::X`) can
+   change surface with no edits to its own tree and be wrongly skipped. Gate-everything
+   is the safe default; `--changed-only` is opt-in.
 5. **Cross-section identity collisions are independent.** When the same `path`
    appears in both removed and added (e.g. a direct impl replaced by a blanket
    impl), each side is classified on its own and must be declared separately. The
@@ -169,8 +229,7 @@ the faithful construction. Each is a roadmap item (§5).
 3. **Change-direction classification via sub/supertype.** Split `residual_change`
    into widening (≈ additive) vs narrowing (≈ lossy) so the gate's severity
    matches semver reality. Closes #3.
-4. **Whole-workspace mode.** Gate every public crate in one report (#4).
-5. **Emit the accepted `regime-transition.toml` as a changelog/ADR artifact.** The
+4. **Emit the accepted `regime-transition.toml` as a changelog/ADR artifact.** The
    declared `u` is a version-controlled record of every intentional API change —
    render it into CHANGELOG/ADR entries on PASS.
 

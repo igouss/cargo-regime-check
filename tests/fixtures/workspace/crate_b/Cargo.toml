@@ -1,0 +1,7 @@
+# crate_b: a gated member whose change leaves an UNDECLARED residual (see its
+# regime-transition.toml and workspace-diffs/crate_b.diff).
+[package]
+name = "crate_b"
+version = "0.0.0"
+edition = "2021"
+publish = false

@@ -1,0 +1,8 @@
+# crate_c: a workspace member with NO regime-transition.toml. It is deliberately
+# NOT gated — `--workspace` must enumerate it as a member yet skip it entirely,
+# never counting it among the evaluated crates.
+[package]
+name = "crate_c"
+version = "0.0.0"
+edition = "2021"
+publish = false

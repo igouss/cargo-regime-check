@@ -1,0 +1,10 @@
+# crate_a: a CLEAN refactor. The public API is only RENAMED — crate_a.diff
+# removes `crate_a::old_name` and adds `crate_a::new_name`. Declaring that rename
+# transports both sides, leaving zero residual, so the `refactor` claim holds and
+# the crate gates CLEAN (its embedded single-crate verdict is `pass`).
+[meta]
+kind = "refactor"
+
+[[rename]]
+from = "crate_a::old_name"
+to = "crate_a::new_name"

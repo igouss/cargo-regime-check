@@ -26,6 +26,23 @@ regime-check-human crate base='origin/main' regime='regime-transition.toml':
 regime-check-file diff regime='regime-transition.toml':
     cargo-regime-check --regime {{regime}} --diff {{diff}} --format json
 
+# Gate EVERY workspace member carrying a regime-transition.toml in ONE run
+# (discovered via `cargo metadata`; each crate uses its own regime file). This is
+# the built-in replacement for a hand-maintained per-crate loop. Process mode needs
+# a CLEAN tree — `cargo public-api` git-checks-out each commit in-tree — and refuses
+# a dirty one. Aggregate exit = max over crates: 2 (error) > 1 (residual) > 0 (clean).
+# Usage: just regime-check-workspace origin/main
+regime-check-workspace base='origin/main':
+    cargo-regime-check --workspace --base {{base}} --format json
+
+# Same, but gate pre-captured diffs on STABLE — no nightly, no git checkout, no
+# dirty-tree hazard. The CI two-stage pattern: a nightly job writes one
+# `<crate>.diff` per gated crate into DIR, then this stable job gates them all. A
+# gated crate with no diff in DIR is an error, never a silent skip.
+# Usage: just regime-check-workspace-diff-dir target/regime-diffs
+regime-check-workspace-diff-dir diff_dir='target/regime-diffs':
+    cargo-regime-check --workspace --diff-dir {{diff_dir}} --format json
+
 # Print a starter regime-transition.toml.
 regime-template:
     cargo run -q -- --template

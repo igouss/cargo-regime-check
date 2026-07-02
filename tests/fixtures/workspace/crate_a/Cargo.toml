@@ -1,0 +1,7 @@
+# crate_a: a gated member whose change is a CLEAN refactor (see its
+# regime-transition.toml and workspace-diffs/crate_a.diff).
+[package]
+name = "crate_a"
+version = "0.0.0"
+edition = "2021"
+publish = false

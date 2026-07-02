@@ -1,0 +1,7 @@
+Removed items from the public API
+=================================
+-pub fn crate_a::old_name() -> u8
+
+Added items to the public API
+=============================
++pub fn crate_a::new_name() -> u8
